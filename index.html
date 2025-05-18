@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <title>Detector de Mascotas</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      max-width: 800px;
+      margin: 0 auto;
+      padding: 20px;
+      text-align: center;
+    }
+
+    #preview {
+      max-width: 100%;
+      margin: 20px 0;
+    }
+
+    button {
+      background-color: #4CAF50;
+      color: white;
+      padding: 10px 20px;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 16px;
+      margin: 10px 5px;
+    }
+
+    button:disabled {
+      background-color: #cccccc;
+    }
+
+    #result {
+      margin-top: 20px;
+      padding: 15px;
+      border-radius: 5px;
+      background-color: #f8f8f8;
+    }
+  </style>
+</head>
+
+<body>
+  <h1>Detector de Mascotas</h1>
+  <p>Toma una foto o selecciona una imagen para identificar si es un gato, perro o pájaro</p>
+
+  <input type="file" id="fileInput" accept="image/*" capture="camera">
+  <button id="btnSend" disabled>Enviar Imagen</button>
+
+  <div>
+    <img id="preview" style="display: none;">
+  </div>
+
+  <div id="result" style="display: none;"></div>
+
+  <script>
+    const fileInput = document.getElementById('fileInput');
+    const btnSend = document.getElementById('btnSend');
+    const preview = document.getElementById('preview');
+    const resultDiv = document.getElementById('result');
+
+    // Mostrar previsualización de la imagen
+    fileInput.addEventListener('change', function (e) {
+      const file = e.target.files[0];
+      if (file) {
+        const reader = new FileReader();
+        reader.onload = function (event) {
+          preview.src = event.target.result;
+          preview.style.display = 'block';
+          btnSend.disabled = false;
+        }
+        reader.readAsDataURL(file);
+      }
+    });
+
+    // Enviar imagen al servidor
+    btnSend.addEventListener('click', async function () {
+      const file = fileInput.files[0];
+      if (!file) return;
+
+      btnSend.disabled = true;
+      btnSend.textContent = 'Procesando...';
+      resultDiv.style.display = 'none';
+
+      try {
+        const formData = new FormData();
+        formData.append('file', file);
+
+        // Reemplaza con la URL de tu servidor Flask
+        const serverUrl = 'https://<tu-ip>:5000/imagen';
+
+        const response = await fetch(serverUrl, {
+          method: 'POST',
+          body: formData
+        });
+
+        const data = await response.json();
+
+        if (data.error) {
+          resultDiv.textContent = `Error: ${data.error}`;
+          resultDiv.style.backgroundColor = '#ffdddd';
+        } else {
+          let resultText = `Resultado: ${data.resultado}`;
+          if (data.detalles) {
+            resultText += `\nDetalles: ${data.detalles}`;
+          }
+          resultDiv.textContent = resultText;
+          resultDiv.style.backgroundColor = '#ddffdd';
+        }
+
+        resultDiv.style.display = 'block';
+
+      } catch (error) {
+        resultDiv.textContent = `Error al conectar con el servidor: ${error.message}`;
+        resultDiv.style.backgroundColor = '#ffdddd';
+        resultDiv.style.display = 'block';
+      } finally {
+        btnSend.disabled = false;
+        btnSend.textContent = 'Enviar Imagen';
+      }
+    });
+  </script>
+</body>
+
+</html>
