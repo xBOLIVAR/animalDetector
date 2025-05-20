@@ -60,11 +60,13 @@
   <img id="preview">
   <div id="result"></div>
   <div id="status">Iniciando cámara...</div>
+  <div id="debug" style="color: red; margin-top: 20px;"></div>
 
   <script>
     const preview = document.getElementById('preview');
     const resultDiv = document.getElementById('result');
     const statusDiv = document.getElementById('status');
+    const debugDiv = document.getElementById('debug');
 
     const serverUrl = 'https://8711-2803-1800-1330-cf8e-9d0a-ef1a-c90-a815.ngrok-free.app';
 
@@ -73,70 +75,131 @@
     let intervalId = null;
     const delayBetweenCaptures = 5000; // 5 segundos entre capturas
 
+    function debugLog(message) {
+      debugDiv.textContent += message + '\n';
+      console.log(message);
+    }
+
     async function initCamera() {
       try {
+        debugLog("Intentando acceder a la cámara...");
         statusDiv.textContent = "Iniciando cámara...";
+
+        // Verificar si el navegador soporta mediaDevices
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+          throw new Error('Tu navegador no soporta acceso a la cámara');
+        }
+
         stream = await navigator.mediaDevices.getUserMedia({
-          video: {facingMode: 'environment'},
+          video: {
+            facingMode: 'environment',
+            width: {ideal: 1280},
+            height: {ideal: 720}
+          },
           audio: false
         });
 
+        debugLog("Cámara accedida con éxito");
         preview.srcObject = stream;
-        preview.onloadedmetadata = () => {
-          statusDiv.textContent = "Cámara iniciada. Preparándose para capturar...";
-          // Esperar un momento para que la cámara se estabilice
-          setTimeout(startCaptureProcess, 2000);
-        };
+
+        // Esperar a que el video esté listo
+        await new Promise((resolve) => {
+          preview.onloadedmetadata = () => {
+            debugLog("Metadatos del video cargados");
+            resolve();
+          };
+          preview.onerror = () => {
+            debugLog("Error al cargar el video");
+            throw new Error('Error al cargar el stream de video');
+          };
+
+          // Timeout por si nunca carga
+          setTimeout(() => {
+            if (!preview.videoWidth) {
+              debugLog("Timeout: Video no cargado");
+              throw new Error('Timeout: No se pudo cargar el video');
+            }
+          }, 5000);
+        });
+
+        debugLog("Cámara lista para capturar");
+        statusDiv.textContent = "Cámara iniciada. Preparándose para capturar...";
+
+        // Iniciar el proceso de captura
+        startCaptureProcess();
+
       } catch (error) {
-        statusDiv.textContent = `Error al acceder a la cámara: ${error.message}`;
-        console.error("Error al acceder a la cámara:", error);
+        debugLog(`Error al iniciar cámara: ${error.message}`);
+        statusDiv.textContent = `Error: ${error.message}`;
+        resultDiv.textContent = `No se pudo iniciar la cámara: ${error.message}`;
+        resultDiv.style.backgroundColor = '#ffdddd';
       }
     }
 
     async function startCaptureProcess() {
-      statusDiv.textContent = "Iniciando proceso de captura automática...";
+      try {
+        debugLog("Iniciando proceso de captura");
+        statusDiv.textContent = "Iniciando proceso de captura automática...";
 
-      // Tomar la primera foto inmediatamente
-      await captureAndSend();
+        // Tomar la primera foto inmediatamente
+        await captureAndSend();
 
-      // Luego establecer el intervalo para capturas periódicas
-      intervalId = setInterval(captureAndSend, delayBetweenCaptures);
+        // Luego establecer el intervalo para capturas periódicas
+        intervalId = setInterval(captureAndSend, delayBetweenCaptures);
+
+      } catch (error) {
+        debugLog(`Error en startCaptureProcess: ${error.message}`);
+        statusDiv.textContent = `Error: ${error.message}`;
+      }
     }
 
     async function captureAndSend() {
       try {
+        if (!preview.videoWidth) {
+          throw new Error('El video no está listo para capturar');
+        }
+
+        debugLog("Preparándose para capturar imagen...");
         statusDiv.textContent = "Preparándose para capturar imagen...";
 
         // Crear un canvas para capturar el frame actual
         const canvas = document.createElement('canvas');
-        const video = preview;
-        canvas.width = video.videoWidth;
-        canvas.height = video.videoHeight;
+        canvas.width = preview.videoWidth;
+        canvas.height = preview.videoHeight;
         const ctx = canvas.getContext('2d');
-        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        ctx.drawImage(preview, 0, 0, canvas.width, canvas.height);
 
-        // Convertir canvas a blob de forma síncrona
-        const blob = await new Promise((resolve) => {
+        debugLog("Canvas creado, convirtiendo a blob...");
+
+        // Convertir canvas a blob
+        const blob = await new Promise((resolve, reject) => {
           canvas.toBlob((blob) => {
-            resolve(blob);
+            if (blob) {
+              resolve(blob);
+            } else {
+              reject(new Error('No se pudo crear el Blob de la imagen'));
+            }
           }, 'image/jpeg', 0.8);
         });
 
-        if (!blob) {
-          throw new Error('No se pudo crear el Blob de la imagen');
-        }
-
+        debugLog("Blob creado, preparando FormData...");
         statusDiv.textContent = "Imagen capturada. Enviando al servidor...";
 
         const formData = new FormData();
         formData.append('file', blob, 'captura.jpg');
 
+        debugLog("Enviando al servidor...");
         const response = await fetch(serverUrl, {
           method: 'POST',
           body: formData
         });
 
+        if (!response.ok) {
+          throw new Error(`Error HTTP: ${response.status}`);
+        }
+
         const data = await response.json();
+        debugLog("Respuesta del servidor recibida");
 
         if (data.error) {
           resultDiv.textContent = `Error: ${data.error}`;
@@ -153,10 +216,16 @@
         statusDiv.textContent = `Análisis completado. Próxima captura en ${delayBetweenCaptures / 1000} segundos...`;
 
       } catch (error) {
-        console.error("Error en el proceso de captura:", error);
+        debugLog(`Error en captureAndSend: ${error.message}`);
         statusDiv.textContent = `Error: ${error.message}`;
         resultDiv.textContent = `Error al procesar la imagen: ${error.message}`;
         resultDiv.style.backgroundColor = '#ffdddd';
+
+        // Detener el intervalo si hay error
+        if (intervalId) {
+          clearInterval(intervalId);
+          intervalId = null;
+        }
       }
     }
 
