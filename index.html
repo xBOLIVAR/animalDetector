@@ -70,7 +70,6 @@
 
     // Configuración de la cámara
     let stream = null;
-    let track = null;
     let intervalId = null;
     const delayBetweenCaptures = 5000; // 5 segundos entre capturas
 
@@ -83,10 +82,11 @@
         });
 
         preview.srcObject = stream;
-        statusDiv.textContent = "Cámara iniciada. Preparándose para capturar...";
-
-        // Esperar un momento para que la cámara se estabilice
-        setTimeout(startCaptureProcess, 2000);
+        preview.onloadedmetadata = () => {
+          statusDiv.textContent = "Cámara iniciada. Preparándose para capturar...";
+          // Esperar un momento para que la cámara se estabilice
+          setTimeout(startCaptureProcess, 2000);
+        };
       } catch (error) {
         statusDiv.textContent = `Error al acceder a la cámara: ${error.message}`;
         console.error("Error al acceder a la cámara:", error);
@@ -115,46 +115,48 @@
         const ctx = canvas.getContext('2d');
         ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
+        // Convertir canvas a blob de forma síncrona
+        const blob = await new Promise((resolve) => {
+          canvas.toBlob((blob) => {
+            resolve(blob);
+          }, 'image/jpeg', 0.8);
+        });
+
+        if (!blob) {
+          throw new Error('No se pudo crear el Blob de la imagen');
+        }
+
         statusDiv.textContent = "Imagen capturada. Enviando al servidor...";
 
-        // Convertir canvas a blob
-        canvas.toBlob(async (blob) => {
-          try {
-            const formData = new FormData();
-            formData.append('file', blob, 'captura.jpg');
+        const formData = new FormData();
+        formData.append('file', blob, 'captura.jpg');
 
-            const response = await fetch(serverUrl, {
-              method: 'POST',
-              body: formData
-            });
+        const response = await fetch(serverUrl, {
+          method: 'POST',
+          body: formData
+        });
 
-            const data = await response.json();
+        const data = await response.json();
 
-            if (data.error) {
-              resultDiv.textContent = `Error: ${data.error}`;
-              resultDiv.style.backgroundColor = '#ffdddd';
-            } else {
-              let resultText = `Resultado: ${data.resultado}`;
-              if (data.detalles) {
-                resultText += `\nDetalles: ${data.detalles}`;
-              }
-              resultDiv.textContent = resultText;
-              resultDiv.style.backgroundColor = '#ddffdd';
-            }
-
-            statusDiv.textContent = `Análisis completado. Próxima captura en ${delayBetweenCaptures / 1000} segundos...`;
-
-          } catch (error) {
-            console.error("Error al enviar la imagen:", error);
-            statusDiv.textContent = `Error al enviar la imagen: ${error.message}`;
-            resultDiv.textContent = `Error al conectar con el servidor: ${error.message}`;
-            resultDiv.style.backgroundColor = '#ffdddd';
+        if (data.error) {
+          resultDiv.textContent = `Error: ${data.error}`;
+          resultDiv.style.backgroundColor = '#ffdddd';
+        } else {
+          let resultText = `Resultado: ${data.resultado}`;
+          if (data.detalles) {
+            resultText += `\nDetalles: ${data.detalles}`;
           }
-        }, 'image/jpeg', 0.8);
+          resultDiv.textContent = resultText;
+          resultDiv.style.backgroundColor = '#ddffdd';
+        }
+
+        statusDiv.textContent = `Análisis completado. Próxima captura en ${delayBetweenCaptures / 1000} segundos...`;
 
       } catch (error) {
         console.error("Error en el proceso de captura:", error);
-        statusDiv.textContent = `Error en el proceso de captura: ${error.message}`;
+        statusDiv.textContent = `Error: ${error.message}`;
+        resultDiv.textContent = `Error al procesar la imagen: ${error.message}`;
+        resultDiv.style.backgroundColor = '#ffdddd';
       }
     }
 
