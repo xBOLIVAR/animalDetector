@@ -3,7 +3,7 @@
 
 <head>
   <meta charset="UTF-8">
-  <title>Detector de Mascotas</title>
+  <title>Detector de Mascotas Automático</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <style>
     body {
@@ -26,28 +26,7 @@
       margin-bottom: 30px;
     }
 
-    #fileInput {
-      margin-bottom: 10px;
-    }
-
-    button {
-      background-color: #4CAF50;
-      color: white;
-      padding: 12px 24px;
-      border: none;
-      border-radius: 6px;
-      cursor: pointer;
-      font-size: 18px;
-      margin-top: 10px;
-    }
-
-    button:disabled {
-      background-color: #cccccc;
-      cursor: not-allowed;
-    }
-
     #preview {
-      display: none;
       max-width: 100%;
       max-height: 400px;
       margin-top: 20px;
@@ -56,7 +35,6 @@
     }
 
     #result {
-      display: none;
       margin-top: 30px;
       padding: 20px;
       border-radius: 8px;
@@ -66,83 +44,130 @@
       width: 100%;
       max-width: 600px;
     }
+
+    #status {
+      margin-top: 20px;
+      font-size: 18px;
+      color: #666;
+    }
   </style>
 </head>
 
 <body>
-  <h1>Detector de Mascotas</h1>
-  <p>Toma una foto o selecciona una imagen para identificar si es un gato, perro o pájaro</p>
-
-  <input type="file" id="fileInput" accept="image/*" capture="camera">
-  <button id="btnSend" disabled>Enviar Imagen</button>
+  <h1>Detector de Mascotas Automático</h1>
+  <p>El sistema está tomando y analizando fotos automáticamente...</p>
 
   <img id="preview">
-
   <div id="result"></div>
+  <div id="status">Iniciando cámara...</div>
 
   <script>
-    const fileInput = document.getElementById('fileInput');
-    const btnSend = document.getElementById('btnSend');
     const preview = document.getElementById('preview');
     const resultDiv = document.getElementById('result');
+    const statusDiv = document.getElementById('status');
 
-    fileInput.addEventListener('change', function (e) {
-      const file = e.target.files[0];
-      if (file) {
-        const reader = new FileReader();
-        reader.onload = function (event) {
-          preview.src = event.target.result;
-          preview.style.display = 'block';
-          btnSend.disabled = false;
-        }
-        reader.readAsDataURL(file);
-      }
-    });
+    const serverUrl = 'https://8711-2803-1800-1330-cf8e-9d0a-ef1a-c90-a815.ngrok-free.app';
 
-    btnSend.addEventListener('click', async function () {
-      const file = fileInput.files[0];
-      if (!file) return;
+    // Configuración de la cámara
+    let stream = null;
+    let track = null;
+    let intervalId = null;
+    const delayBetweenCaptures = 5000; // 5 segundos entre capturas
 
-      btnSend.disabled = true;
-      btnSend.textContent = 'Procesando...';
-      resultDiv.style.display = 'none';
-
+    async function initCamera() {
       try {
-        const formData = new FormData();
-        formData.append('file', file);
-
-        const serverUrl = 'https://3156-2803-1800-1330-cf8e-9d0a-ef1a-c90-a815.ngrok-free.app/imagen';
-
-        const response = await fetch(serverUrl, {
-          method: 'POST',
-          body: formData
+        statusDiv.textContent = "Iniciando cámara...";
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: {facingMode: 'environment'},
+          audio: false
         });
 
-        const data = await response.json();
+        preview.srcObject = stream;
+        statusDiv.textContent = "Cámara iniciada. Preparándose para capturar...";
 
-        if (data.error) {
-          resultDiv.textContent = `Error: ${data.error}`;
-          resultDiv.style.backgroundColor = '#ffdddd';
-        } else {
-          let resultText = `Resultado: ${data.resultado}`;
-          if (data.detalles) {
-            resultText += `\nDetalles: ${data.detalles}`;
+        // Esperar un momento para que la cámara se estabilice
+        setTimeout(startCaptureProcess, 2000);
+      } catch (error) {
+        statusDiv.textContent = `Error al acceder a la cámara: ${error.message}`;
+        console.error("Error al acceder a la cámara:", error);
+      }
+    }
+
+    async function startCaptureProcess() {
+      statusDiv.textContent = "Iniciando proceso de captura automática...";
+
+      // Tomar la primera foto inmediatamente
+      await captureAndSend();
+
+      // Luego establecer el intervalo para capturas periódicas
+      intervalId = setInterval(captureAndSend, delayBetweenCaptures);
+    }
+
+    async function captureAndSend() {
+      try {
+        statusDiv.textContent = "Preparándose para capturar imagen...";
+
+        // Crear un canvas para capturar el frame actual
+        const canvas = document.createElement('canvas');
+        const video = preview;
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+        statusDiv.textContent = "Imagen capturada. Enviando al servidor...";
+
+        // Convertir canvas a blob
+        canvas.toBlob(async (blob) => {
+          try {
+            const formData = new FormData();
+            formData.append('file', blob, 'captura.jpg');
+
+            const response = await fetch(serverUrl, {
+              method: 'POST',
+              body: formData
+            });
+
+            const data = await response.json();
+
+            if (data.error) {
+              resultDiv.textContent = `Error: ${data.error}`;
+              resultDiv.style.backgroundColor = '#ffdddd';
+            } else {
+              let resultText = `Resultado: ${data.resultado}`;
+              if (data.detalles) {
+                resultText += `\nDetalles: ${data.detalles}`;
+              }
+              resultDiv.textContent = resultText;
+              resultDiv.style.backgroundColor = '#ddffdd';
+            }
+
+            statusDiv.textContent = `Análisis completado. Próxima captura en ${delayBetweenCaptures / 1000} segundos...`;
+
+          } catch (error) {
+            console.error("Error al enviar la imagen:", error);
+            statusDiv.textContent = `Error al enviar la imagen: ${error.message}`;
+            resultDiv.textContent = `Error al conectar con el servidor: ${error.message}`;
+            resultDiv.style.backgroundColor = '#ffdddd';
           }
-          resultDiv.textContent = resultText;
-          resultDiv.style.backgroundColor = '#ddffdd';
-        }
-
-        resultDiv.style.display = 'block';
+        }, 'image/jpeg', 0.8);
 
       } catch (error) {
-        resultDiv.textContent = `Error al conectar con el servidor: ${error.message}`;
-        resultDiv.style.backgroundColor = '#ffdddd';
-        resultDiv.style.display = 'block';
-      } finally {
-        btnSend.disabled = false;
-        btnSend.textContent = 'Enviar Imagen';
+        console.error("Error en el proceso de captura:", error);
+        statusDiv.textContent = `Error en el proceso de captura: ${error.message}`;
+      }
+    }
+
+    // Limpiar cuando la página se cierre
+    window.addEventListener('beforeunload', () => {
+      if (intervalId) clearInterval(intervalId);
+      if (stream) {
+        stream.getTracks().forEach(track => track.stop());
       }
     });
+
+    // Iniciar el proceso cuando la página cargue
+    window.addEventListener('DOMContentLoaded', initCamera);
   </script>
 </body>
 
