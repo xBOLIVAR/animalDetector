@@ -34,8 +34,7 @@ def recibir_imagen():
         preds = model.predict(x)
         decoded = decode_predictions(preds, top=3)[0]
 
-        clases_validas = ['dog', 'cat', 'bird', 'parrot',
-                          'hen', 'canary', 'sparrow', 'chickadee']
+        clases_validas = ['dog', 'cat']
         resultado = "desconocido"
         for _, label, prob in decoded:
             if any(animal in label.lower() for animal in clases_validas):
@@ -50,4 +49,4 @@ def recibir_imagen():
 
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000')  # Usar HTTPS
+    app.run(host='0.0.0.0', port='5000')  # Usar HTTPS
