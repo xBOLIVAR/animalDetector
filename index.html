@@ -68,12 +68,11 @@
     const statusDiv = document.getElementById('status');
     const debugDiv = document.getElementById('debug');
 
-    const serverUrl = 'https://8711-2803-1800-1330-cf8e-9d0a-ef1a-c90-a815.ngrok-free.app';
+    const serverUrl = ' https://8711-2803-1800-1330-cf8e-9d0a-ef1a-c90-a815.ngrok-free.app';
 
-    // Configuración de la cámara
     let stream = null;
     let intervalId = null;
-    const delayBetweenCaptures = 5000; // 5 segundos entre capturas
+    const delayBetweenCaptures = 5000;
 
     function debugLog(message) {
       debugDiv.textContent += message + '\n';
@@ -85,143 +84,150 @@
         debugLog("Intentando acceder a la cámara...");
         statusDiv.textContent = "Iniciando cámara...";
 
-        // Verificar si el navegador soporta mediaDevices
-        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-          throw new Error('Tu navegador no soporta acceso a la cámara');
+        // Primero verificar si hay dispositivos de video disponibles
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        const videoDevices = devices.filter(device => device.kind === 'videoinput');
+
+        if (videoDevices.length === 0) {
+          throw new Error('No se encontraron cámaras disponibles');
         }
 
-        stream = await navigator.mediaDevices.getUserMedia({
+        debugLog(`Dispositivos de video encontrados: ${videoDevices.length}`);
+
+        // Intentar primero con la cámara trasera (environment)
+        let constraints = {
           video: {
             facingMode: 'environment',
             width: {ideal: 1280},
             height: {ideal: 720}
           },
           audio: false
-        });
+        };
 
-        debugLog("Cámara accedida con éxito");
+        try {
+          stream = await navigator.mediaDevices.getUserMedia(constraints);
+          debugLog("Cámara trasera accedida con éxito");
+        } catch (error) {
+          debugLog("No se pudo acceder a cámara trasera, intentando con cámara frontal...");
+          constraints.video.facingMode = 'user';
+          stream = await navigator.mediaDevices.getUserMedia(constraints);
+          debugLog("Cámara frontal accedida con éxito");
+        }
+
         preview.srcObject = stream;
 
-        // Esperar a que el video esté listo
-        await new Promise((resolve) => {
-          preview.onloadedmetadata = () => {
-            debugLog("Metadatos del video cargados");
-            resolve();
-          };
-          preview.onerror = () => {
-            debugLog("Error al cargar el video");
-            throw new Error('Error al cargar el stream de video');
-          };
+        // Esperar a que el video esté realmente listo
+        await waitForVideoReady();
 
-          // Timeout por si nunca carga
-          setTimeout(() => {
-            if (!preview.videoWidth) {
-              debugLog("Timeout: Video no cargado");
-              throw new Error('Timeout: No se pudo cargar el video');
-            }
-          }, 5000);
-        });
+        debugLog(`Dimensiones del video: ${preview.videoWidth}x${preview.videoHeight}`);
+        statusDiv.textContent = "Cámara lista. Iniciando capturas...";
 
-        debugLog("Cámara lista para capturar");
-        statusDiv.textContent = "Cámara iniciada. Preparándose para capturar...";
-
-        // Iniciar el proceso de captura
         startCaptureProcess();
 
       } catch (error) {
-        debugLog(`Error al iniciar cámara: ${error.message}`);
+        debugLog(`Error grave: ${error.message}`);
         statusDiv.textContent = `Error: ${error.message}`;
         resultDiv.textContent = `No se pudo iniciar la cámara: ${error.message}`;
         resultDiv.style.backgroundColor = '#ffdddd';
       }
     }
 
+    function waitForVideoReady() {
+      return new Promise((resolve, reject) => {
+        let attempts = 0;
+        const maxAttempts = 10;
+        const checkInterval = 300;
+
+        const checkVideo = () => {
+          attempts++;
+          debugLog(`Intento ${attempts}: Verificando video...`);
+
+          if (preview.videoWidth > 0 && preview.videoHeight > 0) {
+            debugLog("Video listo!");
+            resolve();
+            return;
+          }
+
+          if (attempts >= maxAttempts) {
+            reject(new Error('El video no se cargó después de varios intentos'));
+            return;
+          }
+
+          setTimeout(checkVideo, checkInterval);
+        };
+
+        // También verificamos errores en el elemento de video
+        preview.onerror = () => {
+          reject(new Error('Error en el elemento de video'));
+        };
+
+        checkVideo();
+      });
+    }
+
     async function startCaptureProcess() {
       try {
         debugLog("Iniciando proceso de captura");
-        statusDiv.textContent = "Iniciando proceso de captura automática...";
+        statusDiv.textContent = "Iniciando capturas automáticas...";
 
-        // Tomar la primera foto inmediatamente
         await captureAndSend();
-
-        // Luego establecer el intervalo para capturas periódicas
         intervalId = setInterval(captureAndSend, delayBetweenCaptures);
 
       } catch (error) {
-        debugLog(`Error en startCaptureProcess: ${error.message}`);
+        debugLog(`Error al iniciar capturas: ${error.message}`);
         statusDiv.textContent = `Error: ${error.message}`;
       }
     }
 
     async function captureAndSend() {
       try {
-        if (!preview.videoWidth) {
-          throw new Error('El video no está listo para capturar');
-        }
+        debugLog("Iniciando captura...");
+        statusDiv.textContent = "Preparando captura...";
 
-        debugLog("Preparándose para capturar imagen...");
-        statusDiv.textContent = "Preparándose para capturar imagen...";
-
-        // Crear un canvas para capturar el frame actual
         const canvas = document.createElement('canvas');
         canvas.width = preview.videoWidth;
         canvas.height = preview.videoHeight;
         const ctx = canvas.getContext('2d');
         ctx.drawImage(preview, 0, 0, canvas.width, canvas.height);
 
-        debugLog("Canvas creado, convirtiendo a blob...");
-
-        // Convertir canvas a blob
+        debugLog("Convirtiendo a blob...");
         const blob = await new Promise((resolve, reject) => {
-          canvas.toBlob((blob) => {
-            if (blob) {
-              resolve(blob);
-            } else {
-              reject(new Error('No se pudo crear el Blob de la imagen'));
-            }
+          canvas.toBlob(blob => {
+            blob ? resolve(blob) : reject(new Error('Error al crear blob'));
           }, 'image/jpeg', 0.8);
         });
 
-        debugLog("Blob creado, preparando FormData...");
-        statusDiv.textContent = "Imagen capturada. Enviando al servidor...";
+        debugLog("Enviando al servidor...");
+        statusDiv.textContent = "Enviando imagen...";
 
         const formData = new FormData();
         formData.append('file', blob, 'captura.jpg');
 
-        debugLog("Enviando al servidor...");
         const response = await fetch(serverUrl, {
           method: 'POST',
           body: formData
         });
 
         if (!response.ok) {
-          throw new Error(`Error HTTP: ${response.status}`);
+          throw new Error(`Error del servidor: ${response.status}`);
         }
 
         const data = await response.json();
-        debugLog("Respuesta del servidor recibida");
+        debugLog("Respuesta recibida");
 
-        if (data.error) {
-          resultDiv.textContent = `Error: ${data.error}`;
-          resultDiv.style.backgroundColor = '#ffdddd';
-        } else {
-          let resultText = `Resultado: ${data.resultado}`;
-          if (data.detalles) {
-            resultText += `\nDetalles: ${data.detalles}`;
-          }
-          resultDiv.textContent = resultText;
-          resultDiv.style.backgroundColor = '#ddffdd';
-        }
+        // Mostrar resultados
+        resultDiv.textContent = `Resultado: ${data.resultado}` +
+          (data.detalles ? `\nDetalles: ${data.detalles}` : '');
+        resultDiv.style.backgroundColor = data.error ? '#ffdddd' : '#ddffdd';
 
-        statusDiv.textContent = `Análisis completado. Próxima captura en ${delayBetweenCaptures / 1000} segundos...`;
+        statusDiv.textContent = `Análisis completado. Próxima captura en ${delayBetweenCaptures / 1000}s`;
 
       } catch (error) {
-        debugLog(`Error en captureAndSend: ${error.message}`);
+        debugLog(`Error en captura: ${error.message}`);
         statusDiv.textContent = `Error: ${error.message}`;
-        resultDiv.textContent = `Error al procesar la imagen: ${error.message}`;
+        resultDiv.textContent = `Error al procesar: ${error.message}`;
         resultDiv.style.backgroundColor = '#ffdddd';
 
-        // Detener el intervalo si hay error
         if (intervalId) {
           clearInterval(intervalId);
           intervalId = null;
@@ -229,7 +235,7 @@
       }
     }
 
-    // Limpiar cuando la página se cierre
+    // Limpieza al salir
     window.addEventListener('beforeunload', () => {
       if (intervalId) clearInterval(intervalId);
       if (stream) {
@@ -237,7 +243,7 @@
       }
     });
 
-    // Iniciar el proceso cuando la página cargue
+    // Iniciar
     window.addEventListener('DOMContentLoaded', initCamera);
   </script>
 </body>
