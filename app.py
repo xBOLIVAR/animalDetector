@@ -26,23 +26,32 @@ def recibir_imagen():
     file.save(nombre_archivo)
 
     try:
+        # Cargar imagen y preprocesar
         img = image.load_img(nombre_archivo, target_size=(224, 224))
         x = image.img_to_array(img)
         x = np.expand_dims(x, axis=0)
         x = preprocess_input(x)
 
+        # Hacer predicción
         preds = model.predict(x)
-        decoded = decode_predictions(preds, top=3)[0]
+        decoded = decode_predictions(preds, top=5)[0]
 
-        clases_validas = ['dog', 'cat']
+        # Analizar resultados
         resultado = "desconocido"
         for _, label, prob in decoded:
-            if any(animal in label.lower() for animal in clases_validas):
-                resultado = label.lower()
+            label_lower = label.lower()
+            if 'dog' in label_lower:
+                resultado = "perro"
+                break
+            elif 'cat' in label_lower:
+                resultado = "gato"
                 break
 
         os.remove(nombre_archivo)
-        return jsonify({"resultado": resultado, "detalles": str(decoded)})
+        return jsonify({
+            "resultado": resultado,
+            "detalles": [(label, float(f"{prob:.4f}")) for (_, label, prob) in decoded]
+        })
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
