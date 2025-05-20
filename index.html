@@ -1,43 +1,70 @@
 <!DOCTYPE html>
-<html>
+<html lang="es">
 
 <head>
+  <meta charset="UTF-8">
   <title>Detector de Mascotas</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <style>
     body {
       font-family: Arial, sans-serif;
-      max-width: 800px;
-      margin: 0 auto;
+      margin: 0;
       padding: 20px;
-      text-align: center;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      background-color: #fafafa;
     }
 
-    #preview {
-      max-width: 100%;
-      margin: 20px 0;
+    h1 {
+      margin-top: 20px;
+    }
+
+    p {
+      text-align: center;
+      max-width: 600px;
+      margin-bottom: 30px;
+    }
+
+    #fileInput {
+      margin-bottom: 10px;
     }
 
     button {
       background-color: #4CAF50;
       color: white;
-      padding: 10px 20px;
+      padding: 12px 24px;
       border: none;
-      border-radius: 4px;
+      border-radius: 6px;
       cursor: pointer;
-      font-size: 16px;
-      margin: 10px 5px;
+      font-size: 18px;
+      margin-top: 10px;
     }
 
     button:disabled {
       background-color: #cccccc;
+      cursor: not-allowed;
+    }
+
+    #preview {
+      display: none;
+      max-width: 100%;
+      max-height: 400px;
+      margin-top: 20px;
+      border-radius: 8px;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
     }
 
     #result {
-      margin-top: 20px;
-      padding: 15px;
-      border-radius: 5px;
-      background-color: #f8f8f8;
+      display: none;
+      margin-top: 30px;
+      padding: 20px;
+      border-radius: 8px;
+      font-size: 20px;
+      font-weight: bold;
+      white-space: pre-line;
+      width: 100%;
+      max-width: 600px;
     }
   </style>
 </head>
@@ -49,11 +76,9 @@
   <input type="file" id="fileInput" accept="image/*" capture="camera">
   <button id="btnSend" disabled>Enviar Imagen</button>
 
-  <div>
-    <img id="preview" style="display: none;">
-  </div>
+  <img id="preview">
 
-  <div id="result" style="display: none;"></div>
+  <div id="result"></div>
 
   <script>
     const fileInput = document.getElementById('fileInput');
@@ -61,7 +86,6 @@
     const preview = document.getElementById('preview');
     const resultDiv = document.getElementById('result');
 
-    // Mostrar previsualización de la imagen
     fileInput.addEventListener('change', function (e) {
       const file = e.target.files[0];
       if (file) {
@@ -75,7 +99,6 @@
       }
     });
 
-    // Enviar imagen al servidor
     btnSend.addEventListener('click', async function () {
       const file = fileInput.files[0];
       if (!file) return;
@@ -88,7 +111,6 @@
         const formData = new FormData();
         formData.append('file', file);
 
-        // Reemplaza con la URL de tu servidor Flask
         const serverUrl = 'https://3156-2803-1800-1330-cf8e-9d0a-ef1a-c90-a815.ngrok-free.app/imagen';
 
         const response = await fetch(serverUrl, {
